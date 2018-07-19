@@ -59,7 +59,8 @@ public class ExecutorImpl implements Executor {
 
             case "repolist":
                 return repoList(incoming);
-
+            case "getjar":
+                return getPluginJar(incoming);
         }
 
         return null;
@@ -74,16 +75,38 @@ public class ExecutorImpl implements Executor {
     private MsgEvent repoList(MsgEvent msg) {
 
         Map<String,List<Map<String,String>>> repoMap = new HashMap<>();
-        repoMap.put("plugins",getPluginInventory());
+        List<Map<String,String>> pluginInventory = null;
+        File repoDir = getRepoDir();
+        if(repoDir != null) {
+            pluginInventory = plugin.getPluginInventory(repoDir.getAbsolutePath());
+        }
 
-        List<Map<String,String>> contactMap = getNetworkAddresses();
-        repoMap.put("server",contactMap);
+        repoMap.put("plugins",pluginInventory);
+
+        List<Map<String,String>> repoInfo = getRepoInfo();
+        repoMap.put("server",repoInfo);
 
         msg.setCompressedParam("repolist",gson.toJson(repoMap));
         return msg;
 
     }
 
+    private List<Map<String,String>> getRepoInfo() {
+        List<Map<String,String>> repoInfo = null;
+        try {
+            repoInfo = new ArrayList<>();
+            Map<String, String> repoMap = new HashMap<>();
+            repoMap.put("region",plugin.getRegion());
+            repoMap.put("agent",plugin.getAgent());
+            repoMap.put("pluginid",plugin.getPluginID());
+            repoInfo.add(repoMap);
+        } catch(Exception ex) {
+            ex.printStackTrace();
+        }
+        return repoInfo;
+    }
+
+    /*
     private List<Map<String,String>> getNetworkAddresses() {
         List<Map<String,String>> contactMap = null;
         try {
@@ -156,6 +179,7 @@ public class ExecutorImpl implements Executor {
 
         return contactMap;
     }
+    */
 
     private File getRepoDir() {
         File repoDir = null;
@@ -174,128 +198,41 @@ public class ExecutorImpl implements Executor {
         return repoDir;
     }
 
-    private List<Map<String,String>> getPluginInventory() {
-        List<Map<String,String>> pluginFiles = null;
-        try
-        {
-            File repoDir = getRepoDir();
-                //File folder = new File(repoPath);
-                if (repoDir != null) {
-                    pluginFiles = new ArrayList<>();
-                    File[] listOfFiles = repoDir.listFiles();
+    private MsgEvent getPluginJar(MsgEvent incoming) {
 
-                    for (int i = 0; i < listOfFiles.length; i++) {
-                        if (listOfFiles[i].isFile()) {
-                            try {
-                                String jarPath = listOfFiles[i].getAbsolutePath();
-                                String jarFileName = listOfFiles[i].getName();
-                                String pluginName = getPluginName(jarPath);
-                                String pluginMD5 = getJarMD5(jarPath);
-                                String pluginVersion = getPluginVersion(jarPath);
-                                //System.out.println(pluginName + " " + jarFileName + " " + pluginVersion + " " + pluginMD5);
-                                //pluginFiles.add(listOfFiles[i].getAbsolutePath());
-                                Map<String, String> pluginMap = new HashMap<>();
-                                pluginMap.put("pluginname", pluginName);
-                                pluginMap.put("jarfile", jarFileName);
-                                pluginMap.put("md5", pluginMD5);
-                                pluginMap.put("version", pluginVersion);
-                                pluginFiles.add(pluginMap);
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
+        try {
+            if ((incoming.getParam("action_pluginname") != null) && (incoming.getParam("action_pluginmd5") != null)) {
+                String requestPluginName = incoming.getParam("action_pluginname");
+                String requestPluginMD5 = incoming.getParam("action_pluginmd5");
+
+                File repoDir = getRepoDir();
+                if (repoDir != null) {
+
+                    List<Map<String, String>> pluginInventory = plugin.getPluginInventory(getRepoDir().getAbsolutePath());
+                    for (Map<String, String> repoMap : pluginInventory) {
+
+                        if (repoMap.containsKey("pluginname") && repoMap.containsKey("md5") && repoMap.containsKey("jarfile")) {
+                            String pluginName = repoMap.get("pluginname");
+                            String pluginMD5 = repoMap.get("md5");
+                            String pluginJarFile = repoMap.get("jarfile");
+
+                            if (pluginName.equals(requestPluginName) && pluginMD5.equals(requestPluginMD5)) {
+
+                                Path jarPath = Paths.get(repoDir + "/" + pluginJarFile);
+                                incoming.setDataParam("jardata", java.nio.file.Files.readAllBytes(jarPath));
+
                             }
                         }
+
                     }
-                    if (pluginFiles.isEmpty()) {
-                        pluginFiles = null;
-                    }
+
                 }
-                else {
-                    logger.error("No Repo Found!");
-                }
-
-        }
-        catch(Exception ex)
-        {
-            pluginFiles = null;
-        }
-        return pluginFiles;
-    }
-
-    private String getPluginName(String jarFile) {
-        String version = null;
-        try{
-            //String jarFile = AgentEngine.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-            //logger.debug("JARFILE:" + jarFile);
-            //File file = new File(jarFile.substring(5, (jarFile.length() )));
-            File file = new File(jarFile);
-
-            boolean calcHash = true;
-            BasicFileAttributes attr = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
-            long fileTime = attr.creationTime().toMillis();
-
-            FileInputStream fis = new FileInputStream(file);
-            @SuppressWarnings("resource")
-            JarInputStream jarStream = new JarInputStream(fis);
-            Manifest mf = jarStream.getManifest();
-
-            Attributes mainAttribs = mf.getMainAttributes();
-            version = mainAttribs.getValue("Bundle-SymbolicName");
-        }
-        catch(Exception ex)
-        {
+            }
+        } catch(Exception ex) {
             ex.printStackTrace();
-
         }
-        return version;
+        return incoming;
     }
-
-    private String getPluginVersion(String jarFile) {
-        String version = null;
-        try{
-            //String jarFile = AgentEngine.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-            //logger.debug("JARFILE:" + jarFile);
-            //File file = new File(jarFile.substring(5, (jarFile.length() )));
-            File file = new File(jarFile);
-
-            boolean calcHash = true;
-            BasicFileAttributes attr = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
-            long fileTime = attr.creationTime().toMillis();
-
-            FileInputStream fis = new FileInputStream(file);
-            @SuppressWarnings("resource")
-            JarInputStream jarStream = new JarInputStream(fis);
-            Manifest mf = jarStream.getManifest();
-
-            Attributes mainAttribs = mf.getMainAttributes();
-            version = mainAttribs.getValue("Bundle-Version");
-        }
-        catch(Exception ex)
-        {
-            ex.printStackTrace();
-
-        }
-        return version;
-    }
-
-    private String getJarMD5(String pluginFile) {
-        String jarString = null;
-        try
-        {
-            Path path = Paths.get(pluginFile);
-            byte[] data = Files.readAllBytes(path);
-
-            MessageDigest m= MessageDigest.getInstance("MD5");
-            m.update(data);
-            jarString = new BigInteger(1,m.digest()).toString(16);
-        }
-        catch(Exception e)
-        {
-            e.printStackTrace();
-        }
-        return jarString;
-    }
-
-
 
 
 }

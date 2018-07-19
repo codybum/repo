@@ -72,5 +72,12 @@ public class Plugin implements PluginService {
         }
     }
 
+    @Override
+    public boolean isStopped() {
+        pluginBuilder.setExecutor(null);
+        pluginBuilder.setIsActive(false);
+        return true;
+    }
+
 
 }

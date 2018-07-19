@@ -19,7 +19,7 @@
     <repositories>
         <repository>
             <id>localrepository</id>
-            <url>file:///Users/cody/IdeaProjects/repo</url>
+            <url>file:../localrepo</url>
         </repository>
     </repositories>
 
