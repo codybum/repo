@@ -33,6 +33,8 @@ public class ExecutorImpl implements Executor {
         this.plugin = pluginBuilder;
         logger = plugin.getLogger(ExecutorImpl.class.getName(),CLogger.Level.Info);
         gson = new Gson();
+
+
     }
 
     @Override
@@ -55,14 +57,18 @@ public class ExecutorImpl implements Executor {
 
         logger.debug("Processing Exec message : " + incoming.getParams());
 
-        switch (incoming.getParam("action")) {
+        if(incoming.getParams().containsKey("action")) {
+            switch (incoming.getParam("action")) {
 
-            case "repolist":
-                return repoList(incoming);
-            case "getjar":
-                return getPluginJar(incoming);
+                case "repolist":
+                    return repoList(incoming);
+                case "getjar":
+                    return getPluginJar(incoming);
+                case "putjar":
+                    return putPluginJar(incoming);
+
+            }
         }
-
         return null;
 
 
@@ -106,80 +112,7 @@ public class ExecutorImpl implements Executor {
         return repoInfo;
     }
 
-    /*
-    private List<Map<String,String>> getNetworkAddresses() {
-        List<Map<String,String>> contactMap = null;
-        try {
-            contactMap = new ArrayList<>();
-            String port = plugin.getConfig().getStringParam("port", "3445");
-            String protocol = "http";
-            String path = "/repository";
 
-            List<InterfaceAddress> interfaceAddressList = new ArrayList<>();
-
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface networkInterface = interfaces.nextElement();
-                if (!networkInterface.getDisplayName().startsWith("veth") && !networkInterface.isLoopback() && networkInterface.supportsMulticast() && !networkInterface.isPointToPoint() && !networkInterface.isVirtual()) {
-                    logger.debug("Found Network Interface [" + networkInterface.getDisplayName() + "] initialized");
-                    interfaceAddressList.addAll(networkInterface.getInterfaceAddresses());
-                }
-            }
-
-            for (InterfaceAddress inaddr : interfaceAddressList) {
-                logger.debug("interface addresses " + inaddr);
-                Map<String, String> serverMap = new HashMap<>();
-                String hostAddress = inaddr.getAddress().getHostAddress();
-                if (hostAddress.contains("%")) {
-                    String[] remoteScope = hostAddress.split("%");
-                    hostAddress = remoteScope[0];
-                }
-
-                serverMap.put("protocol", protocol);
-                serverMap.put("ip", hostAddress);
-                serverMap.put("port", port);
-                serverMap.put("path", path);
-                contactMap.add(serverMap);
-
-            }
-
-
-            //put hostname at top of list
-            InetAddress addr = InetAddress.getLocalHost();
-            String hostAddress = addr.getHostAddress();
-            if (hostAddress.contains("%")) {
-                String[] remoteScope = hostAddress.split("%");
-                hostAddress = remoteScope[0];
-            }
-            Map<String,String> serverMap = new HashMap<>();
-            serverMap.put("protocol", protocol);
-            serverMap.put("ip", hostAddress);
-            serverMap.put("port", port);
-            serverMap.put("path", path);
-
-            contactMap.remove(contactMap.indexOf(serverMap));
-            contactMap.add(0,serverMap);
-
-            //Use env var for host with hidden external addresses
-            String externalIp = plugin.getConfig().getStringParam("externalip");
-            //externalIp = "128.163.202.50";
-            if(externalIp != null) {
-                Map<String, String> serverMapExternal = new HashMap<>();
-                serverMapExternal.put("protocol", protocol);
-                serverMapExternal.put("ip", externalIp);
-                serverMapExternal.put("port", port);
-                serverMapExternal.put("path", path);
-                contactMap.add(0,serverMapExternal);
-            }
-//test
-        } catch (Exception ex) {
-            logger.error("getNetworkAddresses ", ex.getMessage());
-        }
-
-
-        return contactMap;
-    }
-    */
 
     private File getRepoDir() {
         File repoDir = null;
@@ -196,6 +129,51 @@ public class ExecutorImpl implements Executor {
             ex.printStackTrace();
         }
         return repoDir;
+    }
+
+
+    private MsgEvent putPluginJar(MsgEvent incoming) {
+
+        try {
+
+
+            String pluginName = incoming.getParam("pluginname");
+            String pluginMD5 = incoming.getParam("md5");
+            String pluginJarFile = incoming.getParam("jarfile");
+            String pluginVersion = incoming.getParam("version");
+
+            /*
+            uploadMsg.setParam("pluginname", pluginName);
+            uploadMsg.setParam("md5", pluginMD5);
+            uploadMsg.setParam("jarFile", pluginJarFile);
+            uploadMsg.setParam("version", pluginVersion);
+            uploadMsg.setDataParam("jardata", java.nio.file.Files.readAllBytes(jarPath));
+            */
+
+            if((pluginName != null) && (pluginMD5 != null) && (pluginJarFile != null) && (pluginVersion != null)) {
+
+                String jarFileSavePath = getRepoDir().getAbsolutePath() + "/" + pluginJarFile;
+                Path path = Paths.get(jarFileSavePath);
+                Files.write(path, incoming.getDataParam("jardata"));
+                File jarFileSaved = new File(jarFileSavePath);
+                if (jarFileSaved.isFile()) {
+                    String md5 = plugin.getJarMD5(jarFileSavePath);
+                    if (pluginMD5.equals(md5)) {
+                        incoming.setParam("uploaded", pluginName);
+
+                    }
+                }
+            }
+
+        } catch(Exception ex){
+            ex.printStackTrace();
+        }
+
+        if(incoming.getParams().containsKey("jardata")) {
+            incoming.removeParam("jardata");
+        }
+
+        return incoming;
     }
 
     private MsgEvent getPluginJar(MsgEvent incoming) {
